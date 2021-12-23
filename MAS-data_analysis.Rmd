@@ -1,0 +1,253 @@
+---
+title: "MAS_project_analysis"
+author: "Munirdin"
+date: "11/24/2021"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+
+## 3. Read the file and skip the first 6 lines with text 
+```{r include= TRUE}
+library(lsr)
+library(ggplot2)
+library(dplyr)
+library(car)
+
+# load the data 
+data = read.csv("/Users/munirdin/Desktop/final-mas/data-3.csv", skip= 6)
+head(data)
+# change column names with proper column names
+colnames(data) <- c("run_numbers", "efficacy_of_type_of_mask", "mask_on_off",  "initial_infected","total_population", "steps_in_minutes", "infected" )
+
+# data with final infected numbers 
+data1 <- subset(data,  data$steps_in_minutes==120) # to get only final number of infection after 120 steps
+data1$infected_only <- data1$infected - data1$initial_infected
+
+#subset mask on and mask off 
+mask_on_data <- subset(data1, data1$mask_on_off == "true" ) # to get only final number of infection 
+
+mask_off_data <- subset(data1,  select = c("mask_on_off", "initial_infected","total_population","infected","infected_only"), data1$mask_on_off =="false" )
+
+
+```
+
+
+
+## 2. Descriptive statistics
+ 
+```{R include = TRUE}
+# aggregate to get mean and sd values for infected persons (incubation ) based on the population in a shopping mall. 
+
+agg.mean = aggregate(mask_on_data, by = list(efficacy_of_type_of_mask =mask_on_data$efficacy_of_type_of_mask), FUN= mean)
+agg.sd = aggregate(mask_on_data, by = list(efficacy_of_type_of_mask =mask_on_data$efficacy_of_type_of_mask), FUN= sd)
+
+# to bind the mean and sd of mask on data 
+
+mean_spread_rate_mask <- cbind( efficacy_of_type_of_mask= agg.mean$efficacy_of_type_of_mask,
+  mean_infected = agg.mean$infected_only, 
+      sd= agg.sd$infected_only, 
+      mean_ratio_infected =agg.mean$infected_only/agg.mean$total_population)
+
+# aggregate to get mean and sd values of without mask data
+
+agg.mean_off = aggregate(mask_off_data, by = list(mask_on_off =mask_off_data$mask_on_off), FUN= mean)
+agg.sd_off = aggregate(mask_off_data, by = list(mask_on_off = mask_off_data$mask_on_off), FUN= sd)
+# calculate the ratio of infection  
+ratio_mask_off <- (agg.mean_off$infected_only/agg.mean_off$total_population )
+# bind the values of mask off data 
+mean_spread_rate_mask_off <- cbind( NA, agg.mean_off$infected_only,agg.sd_off$infected_only, (agg.mean_off$infected_only/agg.mean_off$total_population ))
+
+#create final table 
+final_table <- rbind (mean_spread_rate_mask_off, mean_spread_rate_mask)
+rownames(final_table) <- c("Mask Not On","Cloth mask", "Surgical mask","N95")
+
+# finally get the summary result ^^
+data.frame (final_table)
+```
+As the table shows if the effectiveness of mask increases, the mean and sd value of infected agents will decline. The ratio is calculated as follows 
+(infected_only / total population ). The result indicates that the different type of mask has different effect on the spread of Covid-19. N95 is most effective. 
+
+
+
+## 3.Plotting the data 
+
+```{R include=TRUE}
+
+
+#plotting average incubation numbers  based on mask type 
+
+mask_on_data$efficacy_of_type_of_mask <- as.factor(mask_on_data$efficacy_of_type_of_mask)
+mask_on_data$total_population <- as.factor(mask_on_data$total_population)
+bars(formula= infected ~  total_population +  efficacy_of_type_of_mask , data = mask_on_data, # bars function 
+     heightFun = mean,
+     main = "Infected vs mask type", # title
+     yLabel = "average infected",
+     barSpaceSmall = .1, #space between bars
+     barSpaceBig = 1, # space between bars
+    errorFun = FALSE,
+    legendLabels=c("Cloth mask", "Surgical mask","N95"), # name of mask 
+    legendLeftShift=0.7 # location of legend 
+  )
+#######################################################################################################################################
+
+
+#plotting average incubation numbers  based on mask type 
+
+data1$mask_on_off <- as.factor(data1$mask_on_off)
+data1$total_population <- as.factor(data1$total_population)
+
+bars(formula= infected ~  total_population +  mask_on_off , data = data1, # bars function 
+     heightFun = mean,
+     main = "Mean infected vs mask on or off for different population", # title
+     barSpaceSmall = .1, #space between bars
+     barSpaceBig = 1, # space between bars
+    errorFun = FALSE,
+    legendLabels = c("Mask off", "Mask on"),
+    legendLeftShift=0.7 
+    )
+
+##########################################################################
+
+# plot sum of incubation per mask type 
+
+ggplot(data = data1, aes(x =  mask_on_off, y = infected, fill= mask_on_off))  +  
+  stat_summary(fun.y = sum, geom="bar", size = 1) + 
+  labs(title="Total number of infection vs mask on and off ", x ="Mask on or off", y = "Total number of infection")
+
+
+###########################################################################
+
+
+
+#create line graps per mask type vs infection rated and total population 
+
+mask_on_data_with_steps <- subset(data, data$mask_on_off =="true"  )
+#prepare the data for plot 
+grouped_data <- mask_on_data_with_steps %>%
+  group_by(efficacy_of_type_of_mask, steps_in_minutes, total_population) %>%
+  summarise(mean(infected)) 
+
+grouped_data <- data.frame(grouped_data )
+colnames(grouped_data) <- c("efficacy_of_type_of_mask", "steps_in_minutes","total_population","mean_infected" )
+grouped_data$infection_rate <- grouped_data$mean_infected / grouped_data$total_population
+grouped_data$efficacy_of_type_of_mask <-as.factor(grouped_data$efficacy_of_type_of_mask)
+grouped_data$total_population <- as.factor(grouped_data$total_population)
+
+# create face_wrap with  3 different categorical values ( steps_in_minutes, total_population, efficacy_of_type_of_mask)
+ggplot() +
+  geom_line(data = grouped_data, aes(x= steps_in_minutes , y = infection_rate, color=(efficacy_of_type_of_mask ))) + 
+  labs( title = "Infection rate vs time vs total population ", x="Time in minutes", y ="Infection rate" ) + 
+  facet_wrap(~ total_population) +
+  theme_set(theme_classic())
+#################################################################################
+
+# mean number of infection mask on and off( using data1)
+
+
+mask_with_without <-  data %>%
+  group_by(mask_on_off, steps_in_minutes) %>%
+  summarise(mean(infected/total_population)) 
+mask_with_without <- data.frame(mask_with_without )
+
+mask_with_without$infection_rate <- mask_with_without$mean.infected. / mask_with_without$mean.infected.total_population.
+colnames(mask_with_without) <- c("mask_on_off", "steps_in_minutes","mean_infection_rate")
+mask_with_without$mask_on_off <-as.factor(mask_with_without$mask_on_off)
+# plot the data 
+ggplot() +
+  geom_line(data = mask_with_without, aes(x= steps_in_minutes , y = mean_infection_rate, color=(mask_on_off ))) +
+   labs( title = "Infection rate with and without masks ", x="Time in minutes", y ="average infection rate" ) 
+
+
+```
+
+The different types of plots illustrates the data more clearly. In every plot the effect of wearing mask can be seen. 
+
+## 4. differences in numbers 
+
+```{R include=TRUE}
+# to calculate the difference between mask on and off  as ratio between infected population and total population
+#  to calcute the differences between mask on and off we need the numbers from time steps 120 
+data_for_effect <- subset(data,  data$steps_in_minutes==120)
+data_for_effect$infected_only <- data_for_effect$infected - data1$initial_infected
+
+# group the data by mask_on_off and total_population. This is important to calculate the differences between
+# mask on and not on. 
+
+mask_effect <-  data_for_effect %>%
+  group_by(mask_on_off, total_population) %>%
+  summarise(mean(infected_only/total_population)) 
+colnames(mask_effect) <-c("mask_on_off","total_population", "mean_spread_rate")
+mask_effect <- data.frame(mask_effect )
+
+mask_on_rate <- subset (mask_effect, mask_effect$mask_on_off == "true")
+mask_off_rate <- subset (mask_effect, mask_effect$mask_on_off == "false")
+
+differences <- (mask_off_rate$mean_spread_rate - mask_on_rate$mean_spread_rate )*100
+
+data.frame(cbind(population_size = mask_on_rate$total_population, differences))
+
+```
+These numbers represent the mean ratio between infected populations and total population. The difference between mask on and off by each population size is calculated. For each population size, the differences are approximately (35%) and this means that wearing mask can on average 35% reduce the spread of Covid-19 for each population size.The reason why this number the same for all population is that in this experiment the number of infected agent is controlled at 10 and the population size and infected_only are positive correlated. 35% is average percentage of effectiveness of three types of mask combined. Generally, Covid-19 spreads in multiple ways, but in this experiment, the spread of covid-19 is calculated only for agent to agent. If this experiment could include all possibilities of spread, the effectiveness of wearing mask would be higher, because wearing a mask can prevent people touching their faces. 
+sum up, 35% is only for agent-to-agent with some assumptions. 
+
+
+## 5. Hypothesis testing 
+
+```{R include=TRUE}
+
+# Ho: Wearing mask indoor area is not effective (mu1= mu2)
+# Ha: Wearing mask indoor area is effective ( mu is not equal to mu2)
+
+# check normality of variables mask_on_data$infectd and mask_off_data$infected 
+
+qqPlot(data1$infected_only)
+
+hist( data1$infected_only)
+
+shapiro.test(data1$infected_only)
+#run Welch's independent samples t-test for Ho
+
+independentSamplesTTest(formula = infected ~ mask_on_off, data= data1, var.equal = FALSE)
+
+# Run linear regression to see the effect of categorical variable on depended variable( infected_only)
+
+model <- lm(infected_only ~ efficacy_of_type_of_mask  +  total_population + mask_on_off , data = data1)
+
+# Analysis of Variance Table to detect the effect of each variable on target variable
+ 
+anova(model)
+
+# to see the effect size 
+etaSquared(model)
+
+# summary of model 
+summary(model)
+
+```
+
+## Summary of inferential statistics 
+
+To determine the significance of the effect of the mask on an indoor area, a Welch's independent samples t-test is conducted on the sample data. The target variable ( infected_only) is not normally distributed, but the T-test can still be run because the sample size is large enough. The test result shows(t(221.64)= 15.143, p <.001, Cl95 = [182.45, 237.043] ) that there is enough evidence that the wearing mask in an indoor area has an effect. 
+
+The effect of categorical variables on infection can be different. The linear regression is one way to find out the effect, so end of this analysis a linear regression model is created with three categorical variables ( mask_on_off, total_population, efficacy_of_type_of_mask). 
+After running the Anova function on this linear model, the result shows that population size( F(1, 293)=208.119 p <0.001 ) and wearing masks(1, 293)=909.058 p <0.001 ) have the most effect on the number of infected population. 
+
+The summary function is run on the result of linear regression model. for whole model, all categorical variables have effect on spread of covid-19((F(6,293)=299.6,  p-value: < 2.2e-16, R-squared = 0.857).
+
+To conclude, each categorical variable in this experiment ( mask_on_off, total_population, efficacy_of_type_of_mask) has a effect on the spread of covid-19 virus. 
+
+
+
+
+
+
+
+
+
