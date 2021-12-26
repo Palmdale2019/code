@@ -1,4 +1,4 @@
-# R-codes
+# The effect of wearing mask in an indoor area simulation with NetLogo 
 This project is part of my premaster program at Tilburg University and it was about simulating the effeteness of wearing a mask against COVID-19 in an indoor area.
 The simulation is done using Netlogo and analyzed with R. 
 
